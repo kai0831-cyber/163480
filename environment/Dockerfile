@@ -1,14 +1,6 @@
-FROM python:3.11-slim
-ENV DEBIAN_FRONTEND=noninteractive
-
-RUN apt-get update && apt-get install -y vim curl \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN pip install numpy scipy matplotlib
-
-RUN mkdir -p /app /logs/verifier
-
-COPY buggy_simulation.py /app/simulation.py
-
+FROM python:3.11.9-slim
 WORKDIR /app
-CMD ["/bin/bash"]
+COPY zero_trust_access /app/zero_trust_access
+COPY sample_case.json /app/sample_case.json
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+CMD ["sh", "-c", "trap 'exit 0' TERM INT; while :; do sleep 3600 & wait $!; done"]

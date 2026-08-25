@@ -1,0 +1,18 @@
+{
+  "as_of": "2026-08-25T12:00:00Z",
+  "knowledge_cutoff": "2026-08-25T12:00:00Z",
+  "principals": [
+    {"principal_id": "alice", "tenant_id": "acme"},
+    {"principal_id": "approver", "tenant_id": "acme"}
+  ],
+  "groups": [{"group_id": "security", "tenant_id": "acme"}],
+  "roles": [{"role_id": "operator", "tenant_id": "acme", "approver_group_id": "security", "approval_threshold": 1, "max_minutes": 60, "incompatible_roles": []}],
+  "resources": [{"resource_id": "cluster", "tenant_id": "acme", "parent_id": null, "labels": {"environment": "production"}}],
+  "membership_events": [{"membership_id": "m1", "revision": 1, "published_at": "2026-08-25T09:00:00Z", "op": "UPSERT", "member_type": "PRINCIPAL", "member_id": "approver", "group_id": "security", "valid_from": "2026-08-25T00:00:00Z", "valid_until": "2026-08-26T00:00:00Z"}],
+  "policy_events": [{"policy_id": "p1", "revision": 1, "published_at": "2026-08-25T09:00:00Z", "op": "UPSERT", "effect": "ALLOW", "subject_type": "ROLE", "subject_id": "operator", "resource_id": "cluster", "include_descendants": true, "actions": ["deploy"], "required_labels": {"environment": "production"}, "valid_from": "2026-08-25T00:00:00Z", "valid_until": "2026-08-26T00:00:00Z"}],
+  "session_events": [
+    {"session_event_id": "s-request", "revision": 1, "published_at": "2026-08-25T09:30:00Z", "op": "UPSERT", "session_id": "s1", "kind": "REQUEST", "effective_at": "2026-08-25T09:30:00Z", "principal_id": "alice", "role_id": "operator", "valid_from": "2026-08-25T10:00:00Z", "valid_until": "2026-08-25T11:00:00Z"},
+    {"session_event_id": "s-approve", "revision": 1, "published_at": "2026-08-25T09:45:00Z", "op": "UPSERT", "session_id": "s1", "kind": "APPROVE", "effective_at": "2026-08-25T09:45:00Z", "approver_id": "approver"}
+  ],
+  "requests": [{"request_id": "r1", "principal_id": "alice", "resource_id": "cluster", "action": "deploy", "evaluated_at": "2026-08-25T10:30:00Z", "session_id": "s1"}]
+}

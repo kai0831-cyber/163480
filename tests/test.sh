@@ -1,44 +1,28 @@
 #!/bin/bash
+set -uo pipefail
 
-REWARD_FILE="/logs/verifier/reward.txt"
-mkdir -p /logs/verifier
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+LOG_DIR=${VERIFIER_LOG_DIR:-/logs/verifier}
+REWARD_FILE="$LOG_DIR/reward.txt"
+mkdir -p "$LOG_DIR"
+printf '0\n' > "$REWARD_FILE"
 
-# ====== 运行被测程序 ======
-OUTPUT=$(python3 /app/simulation.py 2>&1)
-EXIT_CODE=$?
+CANDIDATE_ROOT=${CANDIDATE_ROOT:-/app}
+if grep -RInE 'sample_case\.json|integrated-inherited-scope|r-main|2026-08-25T12:00:00Z|13\.6|121\.567' "$CANDIDATE_ROOT/zero_trust_access" >/dev/null 2>&1; then
+    exit 1
+fi
 
-if [ $EXIT_CODE -ne 0 ]; then
-    echo "0" > "$REWARD_FILE"
-    cat "$REWARD_FILE"
+on_exit() {
+    status=$?
+    if [ "$status" -ne 0 ]; then
+        printf '0\n' > "$REWARD_FILE"
+    fi
+}
+trap on_exit EXIT
+trap 'printf "0\n" > "$REWARD_FILE"; exit 124' HUP INT TERM
+
+if timeout 300 python3 "$SCRIPT_DIR/test_cases.py"; then
+    printf '1\n' > "$REWARD_FILE"
     exit 0
 fi
-
-# ====== 数值验证（用 Python 比较浮点数）======
-python3 << 'PYEOF'
-import json, sys, subprocess
-
-expected = {"energy_eV": -13.6, "wavelength_nm": 121.567}
-tolerance = 0.001   # 0.1% 相对误差
-
-result = subprocess.run(["python3", "/app/simulation.py"],
-    capture_output=True, text=True, timeout=60)
-actual = json.loads(result.stdout.strip())
-
-all_pass = True
-for key in expected:
-    rel_err = abs(actual[key] - expected[key]) / abs(expected[key])
-    if rel_err > tolerance: all_pass = False
-
-sys.exit(0 if all_pass else 1)
-PYEOF
-
-if [ "$?" -eq 0 ]; then echo "1" > "$REWARD_FILE"
-else echo "0" > "$REWARD_FILE"
-fi
-
-# ====== 反硬编码检查 ======
-if grep -qE "13\.6|121\.567" /app/simulation.py; then
-    echo "0" > "$REWARD_FILE"
-fi
-
-cat "$REWARD_FILE"
+exit 1

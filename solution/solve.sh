@@ -1,7 +1,11 @@
 #!/bin/bash
+set -eu
 
-# 修复 bug 1
-sed -i 's/G = 6.674e-10/G = 6.674e-11/' /app/simulation.py
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+TARGET_DIR=${TARGET_DIR:-/app/zero_trust_access}
 
-# 验证修复
-python3 /app/simulation.py
+for module in visibility.py graph.py sessions.py policy.py; do
+    install -m 0644 "$SCRIPT_DIR/zero_trust_access/$module" "$TARGET_DIR/$module"
+done
+
+python3 -m py_compile "$TARGET_DIR"/*.py
