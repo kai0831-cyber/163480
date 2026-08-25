@@ -1,9 +1,21 @@
 [task]
 name = "security/bitemporal-zero-trust-authorization-recovery"
-difficulty = "extreme"
+version = "1.0"
 
 [agent]
 timeout_sec = 3600
 
+[environment]
+timeout_sec = 3600
+build_timeout_sec = 600
+cpus = 1
+memory_mb = 4096
+storage_mb = 10240
+
 [verifier]
 timeout_sec = 360
+
+[metadata]
+difficulty = "expert"
+category = "security-coding"
+tags = ["authorization", "python", "security", "graphs"]
