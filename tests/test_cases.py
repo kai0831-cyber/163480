@@ -383,6 +383,62 @@ def session_timeline_case():
     return case
 
 
+def snapshot_replay_case():
+    case = base_case()
+    case["as_of"] = "2026-08-25T13:00:00Z"
+    case["knowledge_cutoff"] = "2026-08-25T12:00:00Z"
+    case["resources"] = [case["resources"][0]]
+    case["policy_events"] = [
+        policy("replay", "DENY", "PRINCIPAL", "user", "root", revision=1, published="2026-08-25T09:00:00Z"),
+        policy("replay", "ALLOW", "PRINCIPAL", "user", "root", revision=3, published="2026-08-25T10:00:00Z"),
+        policy("replay", "DENY", "PRINCIPAL", "user", "root", revision=2, published="2026-08-25T11:00:00Z"),
+        {"policy_id": "replay", "revision": 4, "published_at": "2026-08-25T12:30:00Z", "op": "RETRACT"},
+        policy("future-noise", "ALLOW", "PRINCIPAL", "user", "root", published="2026-08-25T12:30:00Z"),
+    ]
+    case["membership_events"] = [
+        membership("replay-member", "PRINCIPAL", "approver", "approvers", end="2026-08-25T11:00:00Z"),
+        {**membership("replay-member", "PRINCIPAL", "approver", "approvers", end="2026-08-25T12:00:00Z"), "revision": 2, "published_at": "2026-08-25T10:30:00Z"},
+        {**membership("replay-member", "PRINCIPAL", "approver", "approvers", end="2026-08-25T11:30:00Z"), "revision": 3, "published_at": "2026-08-25T11:30:00Z"},
+    ]
+    case["session_events"] = [
+        session_request("replay-request", "s-replay", "user", "operator"),
+        session_approve("replay-approval", "s-replay", "approver", "2026-08-25T10:15:00Z"),
+        {"session_event_id": "replay-revoke", "revision": 1, "published_at": "2026-08-25T11:15:00Z", "op": "UPSERT", "session_id": "s-replay", "kind": "REVOKE", "effective_at": "2026-08-25T11:15:00Z"},
+    ]
+    case["requests"] = [
+        {"request_id": "replay-early", "principal_id": "user", "resource_id": "root", "action": "deploy", "evaluated_at": "2026-08-25T10:30:00Z", "session_id": "s-replay"},
+        {"request_id": "replay-mid", "principal_id": "user", "resource_id": "root", "action": "deploy", "evaluated_at": "2026-08-25T11:00:00Z", "session_id": "s-replay"},
+        {"request_id": "replay-late", "principal_id": "user", "resource_id": "root", "action": "deploy", "evaluated_at": "2026-08-25T11:30:00Z", "session_id": "s-replay"},
+    ]
+    return case
+
+
+def resource_lineage_case():
+    case = base_case()
+    case["groups"].append({"group_id": "operators", "tenant_id": "acme"})
+    case["membership_events"].append(membership("operator-member", "PRINCIPAL", "user", "operators"))
+    case["resources"] = [
+        {"resource_id": "tree-a", "tenant_id": "acme", "parent_id": None, "labels": {"stage": "prod", "zone": "west"}},
+        {"resource_id": "branch-a", "tenant_id": "acme", "parent_id": "tree-a", "labels": {"zone": "central"}},
+        {"resource_id": "leaf-a-opaque", "tenant_id": "acme", "parent_id": "branch-a", "labels": {"tier": "critical"}},
+        {"resource_id": "tree-a-copy", "tenant_id": "acme", "parent_id": None, "labels": {"stage": "dev", "zone": "west"}},
+        {"resource_id": "branch-a-copy", "tenant_id": "acme", "parent_id": "tree-a-copy", "labels": {}},
+    ]
+    case["policy_events"] = [
+        policy("ancestor-allow", "ALLOW", "GROUP", "operators", "tree-a", True, {"zone": "central"}),
+        policy("leaf-role-deny", "DENY", "ROLE", "operator", "leaf-a-opaque"),
+        policy("root-principal", "ALLOW", "PRINCIPAL", "user", "tree-a", True),
+        policy("sibling-should-not-match", "DENY", "PRINCIPAL", "user", "tree-a-copy", True),
+        policy("deep-tie-allow", "ALLOW", "PRINCIPAL", "user", "leaf-a-opaque"),
+        policy("deep-tie-deny", "DENY", "PRINCIPAL", "user", "leaf-a-opaque"),
+    ]
+    case["requests"] = [
+        access_request("lineage-leaf", "leaf-a-opaque", None),
+        access_request("lineage-sibling", "branch-a-copy", None),
+    ]
+    return case
+
+
 def permuted(payload, seed):
     result = deepcopy(payload)
     rng = random.Random(seed)
@@ -566,10 +622,15 @@ def main():
         ("multistage-scope-and-precedence", case_multistage_scope_and_precedence()),
         ("nested-approval-and-sod-inputs", case_nested_approval_and_sod_inputs()),
         ("large-transitive-graph", case_large_graph()),
+        ("snapshot-replay-across-cutoffs", snapshot_replay_case()),
+        ("resource-lineage-consistency", resource_lineage_case()),
     ]
     for name, payload in cases:
         assert_valid(name, payload)
     assert_valid("session-state-timeline", session_timeline_case())
+    assert_valid("snapshot-replay-permutation", permuted(snapshot_replay_case(), 811))
+    assert_valid("snapshot-replay-duplicates", duplicate_generated_rows(snapshot_replay_case()))
+    assert_valid("resource-lineage-permutation", permuted(resource_lineage_case(), 812))
     for seed in range(4):
         generated = generated_branching_case(seed)
         assert_valid(f"generated-branching-{seed}", generated)
