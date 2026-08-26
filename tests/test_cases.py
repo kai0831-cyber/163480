@@ -111,8 +111,12 @@ def assert_cli(name, payload, valid):
     if valid:
         if proc.returncode != 0:
             raise AssertionError(f"{name}: CLI exited {proc.returncode}: {proc.stderr[:500]}")
-        if json.loads(proc.stdout) != expected(payload):
+        want = expected(payload)
+        if json.loads(proc.stdout) != want:
             raise AssertionError(f"{name}: CLI output differs from evaluate_batch")
+        canonical = json.dumps(want, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n"
+        if proc.stdout != canonical:
+            raise AssertionError(f"{name}: CLI output is not canonical sorted JSON")
     elif proc.returncode == 0 or not proc.stderr.strip():
         raise AssertionError(f"{name}: CLI accepted invalid input or gave no explanation")
 
@@ -293,6 +297,19 @@ def invalid_cases():
 
     add("extra-top-level-field", lambda case: case.update(undocumented=1))
     add("post-cutoff-conflict", lambda case: case["policy_events"].append({**case["policy_events"][0], "effect": "DENY", "published_at": "2026-08-26T01:00:00Z"}))
+
+    def membership_revision_conflict(case):
+        case["groups"].append({"group_id": "alternate", "tenant_id": "acme"})
+        case["membership_events"].append({**case["membership_events"][0], "group_id": "alternate"})
+    add("membership-same-revision-conflict", membership_revision_conflict)
+
+    def policy_revision_conflict(case):
+        case["policy_events"].append({**case["policy_events"][0], "effect": "DENY"})
+    add("policy-same-revision-conflict", policy_revision_conflict)
+
+    def session_revision_conflict(case):
+        case["session_events"].append({**case["session_events"][0], "valid_until": "2026-08-25T11:00:00Z"})
+    add("session-same-revision-conflict", session_revision_conflict)
     add("resource-cycle", lambda case: case["resources"][0].update(parent_id="opaque-leaf"))
 
     def member_cycle(case):
@@ -323,6 +340,11 @@ def invalid_cases():
     add("duplicate-resource-id", lambda case: case["resources"].append(deepcopy(case["resources"][0])))
     add("duplicate-actions", lambda case: case["policy_events"][0].update(actions=["deploy", "deploy"]))
     add("empty-actions", lambda case: case["policy_events"][0].update(actions=[]))
+    add("invalid-policy-effect", lambda case: case["policy_events"][0].update(effect="MAYBE"))
+    add("invalid-policy-subject-type", lambda case: case["policy_events"][0].update(subject_type="TENANT"))
+    add("empty-policy-id", lambda case: case["policy_events"][0].update(policy_id=""))
+    add("invalid-policy-label-key", lambda case: case["policy_events"][0].update(required_labels={"": "prod"}))
+    add("empty-policy-interval", lambda case: case["policy_events"][0].update(valid_until=case["policy_events"][0]["valid_from"]))
     add("duplicate-incompatible-roles", lambda case: case["roles"][0].update(incompatible_roles=["operator", "operator"]))
     add("invalid-label-value", lambda case: case["resources"][0].update(labels={"stage": 1}))
 
@@ -343,7 +365,13 @@ def invalid_cases():
 
     add("unknown-approver", lambda case: case["session_events"][1].update(approver_id="missing"))
     add("orphan-session-approval", lambda case: case["session_events"].append(session_approve("orphan-approval", "missing-session", "approver", "2026-08-25T09:50:00Z")))
+    add("invalid-session-kind", lambda case: case["session_events"][0].update(kind="UNKNOWN"))
+    add("request-missing-field", lambda case: case["session_events"][0].pop("role_id"))
+    add("approval-extra-field", lambda case: case["session_events"][1].update(extra=1))
     add("published-before-effective", lambda case: case["session_events"][0].update(published_at="2026-08-25T09:00:00Z"))
+    add("request-effective-after-start", lambda case: case["session_events"][0].update(effective_at="2026-08-25T10:30:00Z"))
+    add("request-empty-interval", lambda case: case["session_events"][0].update(valid_until=case["session_events"][0]["valid_from"]))
+    add("request-over-max-duration", lambda case: case["session_events"][0].update(valid_until="2026-08-25T12:30:00Z"))
     add("request-after-as-of", lambda case: case["requests"][0].update(evaluated_at="2026-08-25T13:00:00Z"))
 
     def post_cutoff_bad_membership(case):
