@@ -169,11 +169,20 @@ def case_duplicate_approver():
     return case
 
 
-def case_inactive_sod():
+def case_active_sod():
     case = base_case()
     case["roles"][0]["incompatible_roles"] = ["auditor"]
     case["roles"].append({"role_id": "auditor", "tenant_id": "acme", "approver_group_id": "approvers", "approval_threshold": 1, "max_minutes": 120, "incompatible_roles": ["operator"]})
-    case["session_events"].append(session_request("request-audit", "s-audit", "user", "auditor"))
+    case["session_events"].extend([
+        session_request("request-audit", "s-audit", "user", "auditor"),
+        session_approve("approve-audit", "s-audit", "approver", "2026-08-25T09:45:00Z"),
+    ])
+    return case
+
+
+def case_inactive_sod():
+    case = case_active_sod()
+    case["session_events"] = [row for row in case["session_events"] if row["session_id"] != "s-audit" or row["kind"] == "REQUEST"]
     return case
 
 
@@ -385,6 +394,7 @@ def main():
         ("diamond-shortest-proof", case_diamond()),
         ("approval-time-membership", case_approval_time()),
         ("distinct-nonself-approvals", case_duplicate_approver()),
+        ("active-sod-session", case_active_sod()),
         ("inactive-sod-session", case_inactive_sod()),
         ("revoked-session-cannot-reactivate", case_revoked_session()),
         ("role-requires-supplied-session", case_role_requires_session()),
