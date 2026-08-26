@@ -275,23 +275,105 @@ def source_policy():
 
 
 def invalid_cases():
-    extra = base_case(); extra["undocumented"] = 1
-    conflict = base_case(); bad = deepcopy(conflict["policy_events"][0]); bad["effect"] = "DENY"; bad["published_at"] = "2026-08-26T01:00:00Z"; conflict["policy_events"].append(bad)
-    cycle = base_case(); cycle["resources"][0]["parent_id"] = "opaque-leaf"
-    member_cycle = base_case(); member_cycle["groups"].extend([{"group_id": "x", "tenant_id": "acme"}, {"group_id": "y", "tenant_id": "acme"}]); member_cycle["membership_events"].extend([membership("xy", "GROUP", "x", "y"), membership("yx", "GROUP", "y", "x")])
-    asym = base_case(); asym["roles"][0]["incompatible_roles"] = ["missing"]
-    duplicate_request = base_case(); duplicate_request["requests"].append(deepcopy(duplicate_request["requests"][0]))
-    bad_bool = base_case(); bad_bool["policy_events"][0]["include_descendants"] = 1
-    bad_interval = base_case(); bad_interval["membership_events"][0]["valid_until"] = bad_interval["membership_events"][0]["valid_from"]
-    bad_reference = base_case(); bad_reference["requests"][0]["resource_id"] = "unknown-resource"
-    bad_integer = base_case(); bad_integer["roles"][0]["approval_threshold"] = True
-    return [
-        ("extra-field", extra), ("post-cutoff-conflict", conflict),
-        ("resource-cycle", cycle), ("membership-cycle", member_cycle),
-        ("asymmetric-role", asym), ("duplicate-request", duplicate_request),
-        ("boolean-is-not-integer", bad_bool), ("empty-membership-interval", bad_interval),
-        ("unknown-request-resource", bad_reference), ("boolean-is-not-positive-integer", bad_integer),
-    ]
+    cases = []
+
+    def add(name, mutate):
+        case = base_case()
+        mutate(case)
+        cases.append((name, case))
+
+    add("extra-top-level-field", lambda case: case.update(undocumented=1))
+    add("post-cutoff-conflict", lambda case: case["policy_events"].append({**case["policy_events"][0], "effect": "DENY", "published_at": "2026-08-26T01:00:00Z"}))
+    add("resource-cycle", lambda case: case["resources"][0].update(parent_id="opaque-leaf"))
+
+    def member_cycle(case):
+        case["groups"].extend([
+            {"group_id": "x", "tenant_id": "acme"},
+            {"group_id": "y", "tenant_id": "acme"},
+        ])
+        case["membership_events"].extend([
+            membership("xy", "GROUP", "x", "y"),
+            membership("yx", "GROUP", "y", "x"),
+        ])
+    add("membership-cycle", member_cycle)
+
+    add("asymmetric-role", lambda case: case["roles"][0].update(incompatible_roles=["missing"]))
+    add("duplicate-request", lambda case: case["requests"].append(deepcopy(case["requests"][0])))
+    add("boolean-is-not-integer", lambda case: case["policy_events"][0].update(include_descendants=1))
+    add("empty-membership-interval", lambda case: case["membership_events"][0].update(valid_until=case["membership_events"][0]["valid_from"]))
+    add("unknown-request-resource", lambda case: case["requests"][0].update(resource_id="unknown-resource"))
+    add("boolean-is-not-positive-integer", lambda case: case["roles"][0].update(approval_threshold=True))
+
+    add("invalid-as-of-timestamp", lambda case: case.update(as_of="not-a-timestamp"))
+    add("empty-principal-id", lambda case: case["principals"][0].update(principal_id=""))
+    add("duplicate-principal-id", lambda case: case["principals"].append(deepcopy(case["principals"][0])))
+    add("duplicate-group-id", lambda case: case["groups"].append(deepcopy(case["groups"][0])))
+    add("duplicate-role-id", lambda case: case["roles"].append(deepcopy(case["roles"][0])))
+    add("empty-resources", lambda case: case.update(resources=[]))
+    add("cross-tenant-resource-parent", lambda case: case["resources"].append({"resource_id": "zeta-child", "tenant_id": "zeta", "parent_id": "root", "labels": {}}))
+    add("duplicate-resource-id", lambda case: case["resources"].append(deepcopy(case["resources"][0])))
+    add("duplicate-actions", lambda case: case["policy_events"][0].update(actions=["deploy", "deploy"]))
+    add("empty-actions", lambda case: case["policy_events"][0].update(actions=[]))
+    add("duplicate-incompatible-roles", lambda case: case["roles"][0].update(incompatible_roles=["operator", "operator"]))
+    add("invalid-label-value", lambda case: case["resources"][0].update(labels={"stage": 1}))
+
+    def cross_tenant_membership(case):
+        case["groups"].append({"group_id": "zeta-group", "tenant_id": "zeta"})
+        case["membership_events"][0]["group_id"] = "zeta-group"
+    add("cross-tenant-membership", cross_tenant_membership)
+
+    def cross_tenant_policy(case):
+        case["resources"].append({"resource_id": "zeta-resource", "tenant_id": "zeta", "parent_id": None, "labels": {}})
+        case["policy_events"][0]["resource_id"] = "zeta-resource"
+    add("cross-tenant-policy", cross_tenant_policy)
+
+    def cross_tenant_session(case):
+        case["principals"].append({"principal_id": "zeta-user", "tenant_id": "zeta"})
+        case["session_events"][0]["principal_id"] = "zeta-user"
+    add("cross-tenant-session-request", cross_tenant_session)
+
+    add("unknown-approver", lambda case: case["session_events"][1].update(approver_id="missing"))
+    add("orphan-session-approval", lambda case: case["session_events"].append(session_approve("orphan-approval", "missing-session", "approver", "2026-08-25T09:50:00Z")))
+    add("published-before-effective", lambda case: case["session_events"][0].update(published_at="2026-08-25T09:00:00Z"))
+    add("request-after-as-of", lambda case: case["requests"][0].update(evaluated_at="2026-08-25T13:00:00Z"))
+
+    def post_cutoff_bad_membership(case):
+        bad = deepcopy(case["membership_events"][0])
+        bad["membership_id"] = "post-cutoff-membership"
+        bad["published_at"] = "2026-08-26T01:00:00Z"
+        bad["group_id"] = "missing-group"
+        case["membership_events"].append(bad)
+    add("post-cutoff-membership-reference-still-validated", post_cutoff_bad_membership)
+
+    def post_cutoff_bad_policy(case):
+        bad = deepcopy(case["policy_events"][0])
+        bad["policy_id"] = "post-cutoff-policy"
+        bad["published_at"] = "2026-08-26T01:00:00Z"
+        bad["subject_id"] = "missing-principal"
+        case["policy_events"].append(bad)
+    add("post-cutoff-policy-reference-still-validated", post_cutoff_bad_policy)
+
+    def post_cutoff_bad_session(case):
+        bad = deepcopy(case["session_events"][0])
+        bad["session_event_id"] = "post-cutoff-session"
+        bad["published_at"] = "2026-08-26T01:00:00Z"
+        bad["role_id"] = "missing-role"
+        case["session_events"].append(bad)
+    add("post-cutoff-session-reference-still-validated", post_cutoff_bad_session)
+
+    def post_cutoff_bad_schema(case):
+        bad = {**case["policy_events"][0], "policy_id": "post-cutoff-schema", "published_at": "2026-08-26T01:00:00Z", "unexpected": 1}
+        case["policy_events"].append(bad)
+    add("post-cutoff-schema-still-validated", post_cutoff_bad_schema)
+
+    return cases
+
+
+def duplicate_rows_case():
+    case = direct_case()
+    for key in ("membership_events", "policy_events", "session_events"):
+        case[key].append(deepcopy(case[key][0]))
+    return case
 
 
 def main():
@@ -316,11 +398,12 @@ def main():
         assert_valid(name, payload)
     for seed in range(7):
         assert_valid(f"row-permutation-{seed}", permuted(case_diamond(), seed))
+    assert_valid("exact-duplicate-ledger-rows", duplicate_rows_case())
     for name, payload in invalid_cases():
         assert_invalid(name, payload)
     assert_cli("cli-valid", direct_case(), True)
     assert_cli("cli-invalid", invalid_cases()[0][1], False)
-    print(f"passed {len(cases) + 7} valid, {len(invalid_cases())} invalid, and 2 CLI scenarios")
+    print(f"passed {len(cases) + 8} valid, {len(invalid_cases())} invalid, and 2 CLI scenarios")
 
 
 if __name__ == "__main__":
