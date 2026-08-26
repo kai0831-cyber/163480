@@ -366,6 +366,9 @@ def session_timeline_case():
     case = base_case()
     case["resources"] = [case["resources"][0]]
     case["policy_events"] = [policy("timeline-role", "ALLOW", "ROLE", "operator", "root")]
+    multi = policy("multi-action", "ALLOW", "PRINCIPAL", "user", "root")
+    multi["actions"] = ["read", "deploy"]
+    case["policy_events"].append(multi)
     case["session_events"].extend([
         {"session_event_id": "timeline-revoke", "revision": 1, "published_at": "2026-08-25T10:45:00Z", "op": "UPSERT", "session_id": "s-op", "kind": "REVOKE", "effective_at": "2026-08-25T10:45:00Z"},
         session_approve("timeline-after-revoke", "s-op", "approver", "2026-08-25T10:50:00Z"),

@@ -25,7 +25,7 @@ def is_active(session, at, model, memberships):
     request = session["request"]
     if not (timestamp(request["effective_at"]) <= at and timestamp(request["valid_from"]) <= at < timestamp(request["valid_until"])):
         return False
-    if any(timestamp(row["effective_at"]) <= at for row in session["revocations"]):
+    if any(timestamp(row["effective_at"]) < at for row in session["revocations"]):
         return False
     role = model["roles"][request["role_id"]]
     approvals = 0

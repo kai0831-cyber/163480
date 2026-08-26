@@ -13,7 +13,7 @@ def evaluate(request, model, policies, memberships, active_role_id):
     for row in policies:
         if not (timestamp(row["valid_from"]) <= at < timestamp(row["valid_until"])):
             continue
-        if request["action"] not in row["actions"]:
+        if not row["actions"] or request["action"] != row["actions"][0]:
             continue
         if not is_in_scope(model["resources"], row["resource_id"], request["resource_id"], row["include_descendants"]):
             continue
