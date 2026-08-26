@@ -259,6 +259,50 @@ def case_deny_tie():
     return case
 
 
+def case_multistage_scope_and_precedence():
+    case = base_case()
+    case["groups"].append({"group_id": "deployers", "tenant_id": "acme"})
+    case["membership_events"].append(membership("md", "PRINCIPAL", "user", "deployers"))
+    case["resources"] = [
+        {"resource_id": "r-9f", "tenant_id": "acme", "parent_id": None, "labels": {"environment": "prod", "region": "eu"}},
+        {"resource_id": "node-eu", "tenant_id": "acme", "parent_id": "r-9f", "labels": {"region": "us"}},
+        {"resource_id": "svc-prod-2", "tenant_id": "acme", "parent_id": "node-eu", "labels": {"classification": "restricted"}},
+        {"resource_id": "object-17", "tenant_id": "acme", "parent_id": "svc-prod-2", "labels": {}},
+        {"resource_id": "r-9f-copy", "tenant_id": "acme", "parent_id": None, "labels": {"region": "us", "classification": "restricted"}},
+    ]
+    case["policy_events"] = [
+        policy("ancestor-group", "ALLOW", "GROUP", "deployers", "r-9f", True, {"region": "us", "classification": "restricted"}),
+        policy("service-role", "DENY", "ROLE", "operator", "svc-prod-2"),
+        policy("leaf-principal", "ALLOW", "PRINCIPAL", "user", "object-17"),
+        policy("prefix-sibling", "ALLOW", "PRINCIPAL", "user", "r-9f", True, {"region": "us"}),
+    ]
+    case["requests"] = [
+        access_request("r-deep-session", "object-17", "s-op"),
+        access_request("r-sibling", "r-9f-copy", None),
+    ]
+    return case
+
+
+def case_nested_approval_and_sod_inputs():
+    case = base_case()
+    case["groups"].append({"group_id": "delegated", "tenant_id": "acme"})
+    case["principals"].append({"principal_id": "approver2", "tenant_id": "acme"})
+    case["roles"][0]["approval_threshold"] = 3
+    case["membership_events"].extend([
+        membership("m2", "PRINCIPAL", "approver2", "delegated", start="2026-08-25T10:00:00Z"),
+        membership("m3", "GROUP", "delegated", "approvers"),
+    ])
+    case["resources"] = [case["resources"][0]]
+    case["policy_events"] = [policy("role-check", "ALLOW", "ROLE", "operator", "root")]
+    case["requests"] = [access_request("r-nested-approval", "root", "s-op")]
+    case["session_events"].extend([
+        session_approve("approve-duplicate", "s-op", "approver", "2026-08-25T09:50:00Z"),
+        session_approve("approve-self", "s-op", "user", "2026-08-25T09:55:00Z"),
+        session_approve("approve-nested", "s-op", "approver2", "2026-08-25T10:15:00Z"),
+    ])
+    return case
+
+
 def case_large_graph(size=220):
     case = direct_case()
     case["groups"].extend({"group_id": f"g{i:03d}", "tenant_id": "acme"} for i in range(size))
@@ -374,6 +418,17 @@ def invalid_cases():
     add("request-over-max-duration", lambda case: case["session_events"][0].update(valid_until="2026-08-25T12:30:00Z"))
     add("request-after-as-of", lambda case: case["requests"][0].update(evaluated_at="2026-08-25T13:00:00Z"))
 
+    def multiple_current_requests(case):
+        case["session_events"].append(session_request("request-op-2", "s-op", "user", "operator"))
+    add("multiple-current-session-requests", multiple_current_requests)
+    add("orphan-current-approval", lambda case: case["session_events"].append(session_approve("orphan-current", "missing-session", "approver", "2026-08-25T09:50:00Z")))
+    add("orphan-current-revoke", lambda case: case["session_events"].append({
+        "session_event_id": "orphan-revoke", "revision": 1,
+        "published_at": "2026-08-25T09:50:00Z", "op": "UPSERT",
+        "session_id": "missing-session", "kind": "REVOKE",
+        "effective_at": "2026-08-25T09:50:00Z",
+    }))
+
     def post_cutoff_bad_membership(case):
         bad = deepcopy(case["membership_events"][0])
         bad["membership_id"] = "post-cutoff-membership"
@@ -430,6 +485,8 @@ def main():
         ("opaque-resource-identifiers", case_false_prefix()),
         ("resource-before-subject-precedence", case_precedence()),
         ("deny-dominates-tie", case_deny_tie()),
+        ("multistage-scope-and-precedence", case_multistage_scope_and_precedence()),
+        ("nested-approval-and-sod-inputs", case_nested_approval_and_sod_inputs()),
         ("large-transitive-graph", case_large_graph()),
     ]
     for name, payload in cases:
