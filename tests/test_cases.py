@@ -139,6 +139,15 @@ def case_retracted():
     return case
 
 
+def case_revision_order_inversion():
+    case = direct_case()
+    case["policy_events"] = [
+        policy("inverted", "DENY", "PRINCIPAL", "user", "root", revision=1, published="2026-08-25T09:00:00Z"),
+        policy("inverted", "ALLOW", "PRINCIPAL", "user", "root", revision=2, published="2026-08-25T11:00:00Z"),
+    ]
+    return case
+
+
 def case_diamond():
     case = direct_case()
     case["groups"].extend([
@@ -313,6 +322,64 @@ def case_large_graph(size=220):
     return case
 
 
+def generated_branching_case(seed, layers=10, width=42, requests_count=32):
+    rng = random.Random(seed)
+    case = direct_case()
+    case["principals"].extend({"principal_id": f"idle-{seed}-{index}", "tenant_id": "zeta"} for index in range(3))
+    case["groups"] = [{"group_id": "approvers", "tenant_id": "acme"}, {"group_id": f"zeta-group-{seed}", "tenant_id": "zeta"}]
+    case["resources"].append({"resource_id": f"zeta-root-{seed}", "tenant_id": "zeta", "parent_id": None, "labels": {}})
+    layer_ids = []
+    for layer in range(layers):
+        ids = [f"grp-{seed}-{layer}-{index}" for index in range(width)]
+        layer_ids.append(ids)
+        case["groups"].extend({"group_id": group_id, "tenant_id": "acme"} for group_id in ids)
+    events = [membership(f"start-{seed}-{index}", "PRINCIPAL", "user", group_id) for index, group_id in enumerate(layer_ids[0][:3])]
+    for layer in range(1, layers):
+        for index, target in enumerate(layer_ids[layer]):
+            parents = rng.sample(layer_ids[layer - 1], 3)
+            for parent_index, parent in enumerate(parents):
+                events.append(membership(f"edge-{seed}-{layer}-{index}-{parent_index}", "GROUP", parent, target))
+    for layer in range(1, layers):
+        events.append(membership(f"backbone-{seed}-{layer}", "GROUP", layer_ids[layer - 1][0], layer_ids[layer][0]))
+    case["membership_events"] = events
+    target = layer_ids[-1][0]
+    case["policy_events"] = [
+        policy(f"target-{seed}", "ALLOW", "GROUP", target, "root", revision=2, published="2026-08-25T11:00:00Z"),
+        policy(f"target-{seed}", "DENY", "GROUP", target, "root", revision=1, published="2026-08-25T09:00:00Z"),
+        policy(f"target-action-{seed}", "ALLOW", "GROUP", target, "root", required={"stage": "prod"}),
+    ]
+    for index in range(320):
+        subject = layer_ids[rng.randrange(layers)][rng.randrange(width)]
+        resource = "opaque-leaf" if index % 5 else "root"
+        row = policy(f"noise-{seed}-{index}", "ALLOW", "GROUP", subject, resource, bool(index % 3))
+        if index % 7 == 0:
+            row["actions"] = ["read", "deploy"]
+        if index % 11 == 0:
+            row["valid_from"] = "2026-08-25T11:00:00Z"
+        case["policy_events"].append(row)
+    case["requests"] = [access_request(f"generated-{seed}-{index}", "root", None) for index in range(requests_count)]
+    case["requests"].extend({"request_id": f"zeta-{seed}-{index}", "principal_id": "idle", "resource_id": f"zeta-root-{seed}", "action": "deploy", "evaluated_at": "2026-08-25T10:30:00Z", "session_id": None} for index in range(3))
+    return case
+
+
+def session_timeline_case():
+    case = base_case()
+    case["resources"] = [case["resources"][0]]
+    case["policy_events"] = [policy("timeline-role", "ALLOW", "ROLE", "operator", "root")]
+    case["session_events"].extend([
+        {"session_event_id": "timeline-revoke", "revision": 1, "published_at": "2026-08-25T10:45:00Z", "op": "UPSERT", "session_id": "s-op", "kind": "REVOKE", "effective_at": "2026-08-25T10:45:00Z"},
+        session_approve("timeline-after-revoke", "s-op", "approver", "2026-08-25T10:50:00Z"),
+    ])
+    case["requests"] = [
+        {"request_id": f"timeline-{index:02d}", "principal_id": "user", "resource_id": "root", "action": "deploy", "evaluated_at": when, "session_id": "s-op"}
+        for index, when in enumerate((
+            "2026-08-25T09:59:59Z", "2026-08-25T10:00:00Z", "2026-08-25T10:30:00Z",
+            "2026-08-25T10:45:00Z", "2026-08-25T11:00:00Z", "2026-08-25T11:30:00Z",
+        ))
+    ]
+    return case
+
+
 def permuted(payload, seed):
     result = deepcopy(payload)
     rng = random.Random(seed)
@@ -468,12 +535,20 @@ def duplicate_rows_case():
     return case
 
 
+def duplicate_generated_rows(payload):
+    result = deepcopy(payload)
+    for key in ("membership_events", "policy_events", "session_events"):
+        result[key].extend(deepcopy(row) for row in result[key][::17])
+    return result
+
+
 def main():
     source_policy()
     cases = [
         ("integrated-inherited-scope", base_case()),
         ("late-lower-revision", case_late_lower_revision()),
         ("authoritative-retraction", case_retracted()),
+        ("revision-order-inversion", case_revision_order_inversion()),
         ("diamond-shortest-proof", case_diamond()),
         ("approval-time-membership", case_approval_time()),
         ("distinct-nonself-approvals", case_duplicate_approver()),
@@ -491,7 +566,13 @@ def main():
     ]
     for name, payload in cases:
         assert_valid(name, payload)
-    for seed in range(7):
+    assert_valid("session-state-timeline", session_timeline_case())
+    for seed in range(4):
+        generated = generated_branching_case(seed)
+        assert_valid(f"generated-branching-{seed}", generated)
+        assert_valid(f"generated-permutation-{seed}", permuted(generated, seed + 100))
+        assert_valid(f"generated-duplicates-{seed}", duplicate_generated_rows(generated))
+    for seed in range(3):
         assert_valid(f"row-permutation-{seed}", permuted(case_diamond(), seed))
     assert_valid("exact-duplicate-ledger-rows", duplicate_rows_case())
     for name, payload in invalid_cases():
