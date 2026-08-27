@@ -46,6 +46,8 @@ Membership, policy, and session-event ledgers share one authority rule. A positi
 
 For each logical ID, consider revisions whose `published_at` is on or before `knowledge_cutoff`. The greatest revision number is authoritative; publication order and physical row order have no authority. If the authoritative row is `RETRACT`, the logical record is absent. If it is `UPSERT`, its full snapshot is current. A lower revision published later never overrides a higher revision. Rows after the cutoff do not affect the snapshot, but their schema and master references are still validated.
 
+`as_of` is only an upper bound on each request's `evaluated_at`. Ledger snapshots are selected solely by `knowledge_cutoff` and revision numbers. A row published after `as_of` but on or before `knowledge_cutoff` remains visible. A row published after `knowledge_cutoff` remains invisible even when `as_of` is later.
+
 A retraction contains exactly its logical ID, `revision`, `published_at`, and `op`. `op` is `UPSERT` or `RETRACT`.
 
 ## Membership graph
@@ -61,7 +63,7 @@ member_type, member_id, group_id, valid_from, valid_until
 
 After bitemporal selection, all current group-to-group edges must form an acyclic graph even when validity intervals do not overlap. At time `t`, only current edges whose half-open interval contains `t` participate. A principal belongs to every group reachable through active edges.
 
-Evidence for a group subject is a path of membership IDs from the principal outward to that group. Choose the fewest edges; among equally short paths choose the lexicographically smallest sequence of membership IDs. Direct principal and role subjects use an empty path.
+Evidence for a group subject is a path of membership IDs from the principal outward to that group. A walk is a candidate only when every edge in it is active at `t`; a shorter walk that uses an inactive edge is discarded. Among fully active walks, choose the fewest edges; among equally short paths choose the lexicographically smallest sequence of membership IDs. Direct principal and role subjects use an empty path.
 
 ## Privileged sessions
 
@@ -78,7 +80,7 @@ The remaining fields depend on `kind`:
 - `APPROVE` adds exactly `approver_id`.
 - `REVOKE` adds no fields.
 
-Every event is published on or after its effective time. After bitemporal selection, each session has exactly one current request; every current approval or revocation must refer to a session having that request. The request principal and role share a tenant, `effective_at <= valid_from < valid_until`, and the half-open requested interval is no longer than the role's `max_minutes` in exact elapsed time.
+Every event is published on or after its effective time. After bitemporal selection, each session has exactly one current request; every current approval or revocation must refer to a session having that request. The request principal and role share a tenant, `effective_at <= valid_from < valid_until`, and the half-open requested interval is no longer than the role's `max_minutes` in exact elapsed time. An interval whose elapsed seconds equal `max_minutes * 60` is valid; a strictly longer interval is not.
 
 At time `t`, a session is active exactly when:
 
@@ -88,7 +90,7 @@ At time `t`, a session is active exactly when:
 
 The requester cannot approve their own session. Repeated approvals by one person count once. Eligibility is evaluated at each approval's own `effective_at`: the approver must belong transitively to the role's approver group at that instant. An ineligible approval contributes nothing. A revocation is irreversible within the current snapshot; later approvals do not reactivate it.
 
-If an access request supplies a session ID, that session must belong to the request principal and be active at the request's evaluation time. Otherwise the decision is immediately `DENY` with reason `SESSION_INVALID`.
+If an access request supplies a session ID, that session must belong to the request principal and be active at the request's evaluation time. Otherwise the decision is immediately `DENY` with reason `SESSION_INVALID`. That denial is terminal for the request: do not evaluate policies, and do not fall back to principal or group grants. A supplied session owned by a different principal, a missing session, or an inactive session is `SESSION_INVALID`, not a payload error.
 
 For a valid supplied session, inspect every other session for the same principal that is active at the evaluation time. If any has a role incompatible with the supplied session's role, decide `DENY` with reason `SOD_CONFLICT` and report the conflicting active session IDs in lexical order. Inactive sessions never cause this conflict.
 
@@ -121,7 +123,9 @@ A current policy is applicable only when:
 - every required label equals the requested resource's effective label; and
 - its subject matches the principal directly, a transitively reachable group, or the role of the valid supplied session.
 
-Resource IDs are opaque; textual prefixes never imply ancestry. A role policy never applies without the corresponding valid supplied session.
+Required labels are a subset of the requested resource's effective labels; extra labels on the resource do not prevent a match. Compare those effective labels, never the policy resource's stored labels. `include_descendants` extends matching to descendants and still matches the policy's own resource.
+
+Resource IDs are opaque; textual prefixes never imply ancestry. A role policy never applies without the corresponding valid supplied session. A valid supplied session does not suppress applicable principal or group policies.
 
 Resolve applicable policies by the lexicographic precedence pair:
 
@@ -129,7 +133,7 @@ Resolve applicable policies by the lexicographic precedence pair:
 (policy resource depth, subject rank)
 ```
 
-where `PRINCIPAL` rank is 3, `ROLE` is 2, and `GROUP` is 1. Keep every policy tied at the greatest pair. If any retained policy is `DENY`, decide `DENY` with `POLICY_DENY`; otherwise decide `ALLOW` with `POLICY_ALLOW`. With no applicable policy, return `DENY` and `NO_MATCH`.
+where `PRINCIPAL` rank is 3, `ROLE` is 2, and `GROUP` is 1. Keep every policy tied at the greatest pair. A `DENY` whose pair is strictly smaller than the greatest pair is discarded before the effect rule. If any retained policy is `DENY`, decide `DENY` with `POLICY_DENY`; otherwise decide `ALLOW` with `POLICY_ALLOW`. With no applicable policy, return `DENY` and `NO_MATCH`.
 
 ## Output contract
 

@@ -17,7 +17,7 @@ def evaluate(request, model, policies, memberships, active_role_id):
             continue
         if not is_in_scope(model["resources"], row["resource_id"], request["resource_id"], row["include_descendants"]):
             continue
-        if any(resource_labels.get(key) != value for key, value in row["required_labels"].items()):
+        if resource_labels != dict(row["required_labels"]):
             continue
         kind = row["subject_type"]
         if kind == "PRINCIPAL" and row["subject_id"] == request["principal_id"]:
@@ -38,6 +38,6 @@ def evaluate(request, model, policies, memberships, active_role_id):
         {"policy_id": row["policy_id"], "effect": row["effect"], "subject_path": list(path)}
         for row, path in sorted(governing, key=lambda item: item[0]["policy_id"])
     ]
-    if any(row["effect"] == "ALLOW" for row, _ in governing):
-        return "ALLOW", "POLICY_ALLOW", evidence
-    return "DENY", "POLICY_DENY", evidence
+    if any(row["effect"] == "DENY" for _, row, _ in applicable):
+        return "DENY", "POLICY_DENY", evidence
+    return "ALLOW", "POLICY_ALLOW", evidence

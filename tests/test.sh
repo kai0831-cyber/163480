@@ -8,7 +8,7 @@ mkdir -p "$LOG_DIR"
 printf '0\n' > "$REWARD_FILE"
 
 CANDIDATE_ROOT=${CANDIDATE_ROOT:-/app}
-if grep -RInE 'sample_case\.json|integrated-inherited-scope|r-main|2026-08-25T12:00:00Z|13\.6|121\.567' "$CANDIDATE_ROOT/zero_trust_access" >/dev/null 2>&1; then
+if grep -RInE 'sample_case\.json|integrated-inherited-scope|r-main|2026-08-25T12:00:00Z|13\.6|121\.567|r-known-correction|r-active-long-path' "$CANDIDATE_ROOT/zero_trust_access" >/dev/null 2>&1; then
     exit 1
 fi
 

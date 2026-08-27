@@ -504,6 +504,106 @@ def case_approval_membership_boundaries():
     return case
 
 
+def case_highest_precedence_masks_lower_deny():
+    case = base_case()
+    case["groups"].append({"group_id": "users", "tenant_id": "acme"})
+    case["membership_events"].append(membership("mu", "PRINCIPAL", "user", "users"))
+    case["resources"] = [{"resource_id": "root", "tenant_id": "acme", "parent_id": None, "labels": {}}]
+    case["policy_events"] = [
+        policy("p-principal-allow", "ALLOW", "PRINCIPAL", "user", "root"),
+        policy("p-role-deny", "DENY", "ROLE", "operator", "root"),
+        policy("p-group-deny", "DENY", "GROUP", "users", "root"),
+    ]
+    case["requests"] = [
+        access_request("r-with-session", "root", "s-op"),
+        access_request("r-without-session", "root", None),
+    ]
+    return case
+
+
+def case_as_of_independent_ledger():
+    case = direct_case()
+    case["as_of"] = "2026-08-25T11:00:00Z"
+    case["knowledge_cutoff"] = "2026-08-25T12:00:00Z"
+    case["resources"] = [{"resource_id": "root", "tenant_id": "acme", "parent_id": None, "labels": {}}]
+    case["policy_events"] = [
+        policy("flip", "DENY", "PRINCIPAL", "user", "root", revision=1, published="2026-08-25T09:00:00Z"),
+        policy("flip", "ALLOW", "PRINCIPAL", "user", "root", revision=2, published="2026-08-25T11:30:00Z"),
+        policy("flip", "DENY", "PRINCIPAL", "user", "root", revision=3, published="2026-08-25T12:30:00Z"),
+    ]
+    case["requests"] = [access_request("r-known-correction", "root", None)]
+    return case
+
+
+def case_expired_membership_shortcut():
+    case = direct_case()
+    case["resources"] = [{"resource_id": "root", "tenant_id": "acme", "parent_id": None, "labels": {}}]
+    case["groups"].extend([
+        {"group_id": "shortcut", "tenant_id": "acme"},
+        {"group_id": "long-a", "tenant_id": "acme"},
+        {"group_id": "long-b", "tenant_id": "acme"},
+        {"group_id": "target", "tenant_id": "acme"},
+    ])
+    case["membership_events"] = [
+        membership("a-short-0", "PRINCIPAL", "user", "shortcut"),
+        membership("a-short-1", "GROUP", "shortcut", "target", end="2026-08-25T10:00:00Z"),
+        membership("z-long-0", "PRINCIPAL", "user", "long-a"),
+        membership("z-long-1", "GROUP", "long-a", "long-b"),
+        membership("z-long-2", "GROUP", "long-b", "target"),
+    ]
+    case["policy_events"] = [policy("via-target", "ALLOW", "GROUP", "target", "root")]
+    case["requests"] = [access_request("r-active-long-path", "root", None)]
+    return case
+
+
+def case_invalid_session_preempts_allow():
+    case = direct_case()
+    case["resources"] = [{"resource_id": "root", "tenant_id": "acme", "parent_id": None, "labels": {}}]
+    case["session_events"].append({
+        "session_event_id": "revoke-preempt", "revision": 1,
+        "published_at": "2026-08-25T10:15:00Z", "op": "UPSERT",
+        "session_id": "s-op", "kind": "REVOKE",
+        "effective_at": "2026-08-25T10:15:00Z",
+    })
+    case["requests"] = [access_request("r-revoked-preempts", "root", "s-op")]
+    return case
+
+
+def case_exact_max_session_duration():
+    case = base_case()
+    case["roles"][0]["max_minutes"] = 90
+    case["resources"] = [{"resource_id": "root", "tenant_id": "acme", "parent_id": None, "labels": {}}]
+    case["policy_events"] = [policy("role-exact-duration", "ALLOW", "ROLE", "operator", "root")]
+    case["requests"] = [access_request("r-exact-duration", "root", "s-op")]
+    return case
+
+
+def case_foreign_principal_session():
+    case = base_case()
+    case["principals"].append({"principal_id": "other", "tenant_id": "acme"})
+    case["resources"] = [{"resource_id": "root", "tenant_id": "acme", "parent_id": None, "labels": {}}]
+    case["policy_events"] = [
+        policy("role-exact", "ALLOW", "ROLE", "operator", "root"),
+        policy("other-direct", "ALLOW", "PRINCIPAL", "other", "root"),
+    ]
+    case["requests"] = [access_request("r-foreign-session", "root", "s-op", principal_id="other")]
+    return case
+
+
+def case_strict_and_self_scope():
+    case = direct_case()
+    case["resources"] = [
+        {"resource_id": "scope-root", "tenant_id": "acme", "parent_id": None, "labels": {}},
+        {"resource_id": "scope-child", "tenant_id": "acme", "parent_id": "scope-root", "labels": {}},
+    ]
+    case["policy_events"] = [policy("strict-root", "ALLOW", "PRINCIPAL", "user", "scope-root", False)]
+    case["requests"] = [
+        access_request("r-self-strict", "scope-root", None),
+        access_request("r-child-excluded", "scope-child", None),
+    ]
+    return case
+
+
 def permuted(payload, seed):
     result = deepcopy(payload)
     rng = random.Random(seed)
@@ -515,7 +615,7 @@ def permuted(payload, seed):
 def source_policy():
     root = Path(CANDIDATE_ROOT) / "zero_trust_access"
     joined = "\n".join(path.read_text(errors="ignore") for path in root.glob("*.py"))
-    for forbidden in ("/tests", "/solution", "sample_case.json", "integrated-inherited-scope", "r-main", "2026-08-25T12:00:00Z"):
+    for forbidden in ("/tests", "/solution", "sample_case.json", "integrated-inherited-scope", "r-main", "2026-08-25T12:00:00Z", "r-known-correction", "r-active-long-path"):
         if forbidden in joined:
             raise AssertionError(f"candidate source references verifier material or fixture-specific data: {forbidden}")
     if "13.6" in joined or "121.567" in joined:
@@ -693,6 +793,13 @@ def main():
         ("approval-membership-boundaries", case_approval_membership_boundaries()),
         ("multi-action-only", case_multiaction_only()),
         ("eligible-self-approval", case_eligible_self_approval()),
+        ("highest-precedence-masks-lower-deny", case_highest_precedence_masks_lower_deny()),
+        ("as-of-independent-ledger", case_as_of_independent_ledger()),
+        ("expired-membership-shortcut", case_expired_membership_shortcut()),
+        ("invalid-session-preempts-allow", case_invalid_session_preempts_allow()),
+        ("exact-max-session-duration", case_exact_max_session_duration()),
+        ("foreign-principal-session", case_foreign_principal_session()),
+        ("strict-and-self-scope", case_strict_and_self_scope()),
     ]
     for name, payload in cases:
         assert_valid(name, payload)
@@ -704,6 +811,9 @@ def main():
     assert_valid("snapshot-replay-permutation", permuted(snapshot_replay_case(), 811))
     assert_valid("snapshot-replay-duplicates", duplicate_generated_rows(snapshot_replay_case()))
     assert_valid("resource-lineage-permutation", permuted(resource_lineage_case(), 812))
+    assert_valid("highest-precedence-masks-lower-deny-permutation", permuted(case_highest_precedence_masks_lower_deny(), 921))
+    assert_valid("as-of-independent-ledger-permutation", permuted(case_as_of_independent_ledger(), 922))
+    assert_valid("expired-membership-shortcut-permutation", permuted(case_expired_membership_shortcut(), 923))
     for seed in range(4):
         generated = generated_branching_case(seed)
         assert_valid(f"generated-branching-{seed}", generated)
@@ -716,7 +826,7 @@ def main():
         assert_invalid(name, payload)
     assert_cli("cli-valid", direct_case(), True)
     assert_cli("cli-invalid", invalid_cases()[0][1], False)
-    print(f"passed {len(cases) + 8} valid, {len(invalid_cases())} invalid, and 2 CLI scenarios")
+    print(f"passed {len(cases) + 11} valid, {len(invalid_cases())} invalid, and 2 CLI scenarios")
 
 
 if __name__ == "__main__":

@@ -27,13 +27,12 @@ def _terminal_decision(request: dict[str, Any], reason: str, conflicts: list[str
 
 def evaluate_batch(payload: Any) -> dict[str, Any]:
     model = validate_payload(payload)
-    visible_until = min(model["cutoff_dt"], model["as_of_dt"])
     memberships = resolve(
-        model["membership_events"], "membership_id", visible_until
+        model["membership_events"], "membership_id", model["cutoff_dt"]
     )
-    policies = resolve(model["policy_events"], "policy_id", visible_until)
+    policies = resolve(model["policy_events"], "policy_id", model["cutoff_dt"])
     session_events = resolve(
-        model["session_events"], "session_event_id", visible_until
+        model["session_events"], "session_event_id", model["cutoff_dt"]
     )
     validate_memberships(memberships, model["groups"])
     sessions = build_sessions(session_events)
@@ -45,14 +44,18 @@ def evaluate_batch(payload: Any) -> dict[str, Any]:
         session_id = request["session_id"]
         if session_id is not None:
             session = sessions.get(session_id)
-            if session is None or not is_active(session, at, model, memberships):
-                active_role = None
-            else:
-                conflicts = sod_conflicts(session_id, sessions, at, model, memberships)
-                if conflicts:
-                    decisions.append(_terminal_decision(request, "SOD_CONFLICT", conflicts))
-                    continue
-                active_role = session["request"]["role_id"]
+            if (
+                session is None
+                or session["request"]["principal_id"] != request["principal_id"]
+                or not is_active(session, at, model, memberships)
+            ):
+                decisions.append(_terminal_decision(request, "SESSION_INVALID", []))
+                continue
+            conflicts = sod_conflicts(session_id, sessions, at, model, memberships)
+            if conflicts:
+                decisions.append(_terminal_decision(request, "SOD_CONFLICT", conflicts))
+                continue
+            active_role = session["request"]["role_id"]
 
         decision, reason, governing = evaluate(
             request, model, policies, memberships, active_role

@@ -239,7 +239,7 @@ def validate_payload(payload):
                 if principal is None or role is None or principal["tenant_id"] != role["tenant_id"]:
                     raise ValueError("invalid session request")
                 start, end = timestamp(row["valid_from"]), timestamp(row["valid_until"])
-                if effective > start or start >= end or (end - start).total_seconds() >= role["max_minutes"] * 60:
+                if effective > start or start >= end or (end - start).total_seconds() > role["max_minutes"] * 60:
                     raise ValueError("invalid requested interval")
             elif row["kind"] == "APPROVE" and ident(row["approver_id"], "approver_id") not in principals:
                 raise ValueError("unknown approver")
