@@ -439,6 +439,46 @@ def resource_lineage_case():
     return case
 
 
+def case_revoked_incompatible_sod():
+    case = case_active_sod()
+    case["session_events"].append({
+        "session_event_id": "revoke-audit",
+        "revision": 1,
+        "published_at": "2026-08-25T10:15:00Z",
+        "op": "UPSERT",
+        "session_id": "s-audit",
+        "kind": "REVOKE",
+        "effective_at": "2026-08-25T10:15:00Z",
+    })
+    case["requests"] = [access_request("r-revoked-sod", "opaque-leaf", "s-op")]
+    return case
+
+
+def case_approval_membership_boundaries():
+    case = base_case()
+    case["principals"].extend([
+        {"principal_id": "approver-early", "tenant_id": "acme"},
+        {"principal_id": "approver-history", "tenant_id": "acme"},
+    ])
+    case["resources"] = [case["resources"][0]]
+    case["policy_events"] = [policy("boundary-role", "ALLOW", "ROLE", "operator", "root")]
+    case["membership_events"] = [
+        membership("m-early", "PRINCIPAL", "approver-early", "approvers", start="2026-08-25T10:00:00Z", end="2026-08-25T11:00:00Z"),
+        membership("m-history", "PRINCIPAL", "approver-history", "approvers", start="2026-08-25T09:00:00Z", end="2026-08-25T10:00:00Z"),
+    ]
+    case["session_events"] = [
+        session_request("request-early", "s-early", "user", "operator"),
+        session_approve("approval-early", "s-early", "approver-early", "2026-08-25T09:45:00Z"),
+        session_request("request-history", "s-history", "user", "operator"),
+        session_approve("approval-history", "s-history", "approver-history", "2026-08-25T09:30:00Z"),
+    ]
+    case["requests"] = [
+        access_request("r-early", "root", "s-early"),
+        access_request("r-history", "root", "s-history"),
+    ]
+    return case
+
+
 def permuted(payload, seed):
     result = deepcopy(payload)
     rng = random.Random(seed)
@@ -624,10 +664,14 @@ def main():
         ("large-transitive-graph", case_large_graph()),
         ("snapshot-replay-across-cutoffs", snapshot_replay_case()),
         ("resource-lineage-consistency", resource_lineage_case()),
+        ("revoked-incompatible-sod", case_revoked_incompatible_sod()),
+        ("approval-membership-boundaries", case_approval_membership_boundaries()),
     ]
     for name, payload in cases:
         assert_valid(name, payload)
     assert_valid("session-state-timeline", session_timeline_case())
+    assert_valid("revoked-incompatible-sod-permutation", permuted(case_revoked_incompatible_sod(), 901))
+    assert_valid("approval-membership-boundaries-permutation", permuted(case_approval_membership_boundaries(), 902))
     assert_valid("snapshot-replay-permutation", permuted(snapshot_replay_case(), 811))
     assert_valid("snapshot-replay-duplicates", duplicate_generated_rows(snapshot_replay_case()))
     assert_valid("resource-lineage-permutation", permuted(resource_lineage_case(), 812))
