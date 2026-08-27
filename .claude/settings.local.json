@@ -7,7 +7,28 @@
       "Bash(mkdir -p xgencode-annotator xgencode-round1-reviewer xgencode-round2-reviewer)",
       "Bash(cp xgencode-annotator.md xgencode-annotator/SKILL.md)",
       "Bash(cp xgencode-round1-reviewer.md xgencode-round1-reviewer/SKILL.md)",
-      "Bash(cp xgencode-round2-reviewer.md xgencode-round2-reviewer/SKILL.md)"
+      "Bash(cp xgencode-round2-reviewer.md xgencode-round2-reviewer/SKILL.md)",
+      "Bash(git ls-remote *)",
+      "Bash(git fetch *)",
+      "Bash(git switch *)",
+      "Bash(git merge *)",
+      "Skill(xgencode-round1-reviewer)",
+      "Bash(rm -rf /tmp/zero-trust-app)",
+      "Bash(mkdir -p /tmp/zero-trust-app)",
+      "Bash(cp -a environment/zero_trust_access /tmp/zero-trust-app/)",
+      "Bash(cp solution/zero_trust_access/*.py /tmp/zero-trust-app/zero_trust_access/)",
+      "Bash(CANDIDATE_ROOT=/tmp/zero-trust-app python3 tests/test_cases.py)",
+      "Skill(xgencode-round2-reviewer)",
+      "Bash(rm -rf /tmp/zero-trust-app /tmp/zero-trust-logs)",
+      "Bash(mkdir -p /tmp/zero-trust-app /tmp/zero-trust-logs/verifier)",
+      "Bash(python3 -m py_compile environment/zero_trust_access/*.py solution/zero_trust_access/*.py tests/*.py)",
+      "Bash(bash -n tests/test.sh solution/solve.sh)",
+      "Bash(command -v docker)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git remote *)",
+      "Bash(git push *)",
+      "Bash(gh auth *)"
     ]
   }
 }
