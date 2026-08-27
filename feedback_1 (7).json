@@ -1,0 +1,115 @@
+{
+  "agent_execution": {
+    "finished_at": "2026-08-27T03:14:07.134372Z",
+    "started_at": "2026-08-27T03:03:54.010298Z"
+  },
+  "agent_info": {
+    "model_info": null,
+    "name": "codex",
+    "version": "0.145.0"
+  },
+  "agent_result": {
+    "cost_usd": null,
+    "metadata": null,
+    "n_cache_tokens": 552704,
+    "n_input_tokens": 620673,
+    "n_output_tokens": 31622,
+    "rollout_details": null
+  },
+  "agent_setup": {
+    "finished_at": "2026-08-27T03:03:54.010169Z",
+    "started_at": "2026-08-27T03:03:41.370302Z"
+  },
+  "config": {
+    "agent": {
+      "env": {},
+      "import_path": null,
+      "kwargs": {},
+      "max_timeout_sec": null,
+      "model_name": "r1-online-gpt-5.4",
+      "name": "codex",
+      "override_setup_timeout_sec": null,
+      "override_timeout_sec": null
+    },
+    "agent_setup_timeout_multiplier": null,
+    "agent_timeout_multiplier": null,
+    "artifacts": [],
+    "environment": {
+      "delete": true,
+      "env": {},
+      "force_build": false,
+      "import_path": null,
+      "kwargs": {
+        "ALL_PROXY": "",
+        "ANTHROPIC_API_KEY": "***REDACTED***",
+        "ANTHROPIC_BASE_URL": "***REDACTED***",
+        "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": 70,
+        "CLAUDE_CODE_AUTO_COMPACT_WINDOW": 250000,
+        "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": 1,
+        "HTTPS_PROXY": "",
+        "HTTP_PROXY": "",
+        "OPENAI_API_KEY": "***REDACTED***",
+        "OPENAI_BASE_URL": "***REDACTED***",
+        "OPENROUTER_API_KEY": "***REDACTED***",
+        "all_proxy": "",
+        "http_proxy": "",
+        "https_proxy": ""
+      },
+      "mounts_json": null,
+      "override_cpus": null,
+      "override_gpus": null,
+      "override_memory_mb": null,
+      "override_storage_mb": null,
+      "suppress_override_warnings": false,
+      "type": "docker"
+    },
+    "environment_build_timeout_multiplier": null,
+    "job_id": "de9ee43d-5cc2-47ed-b3b1-bfdeb27d07ec",
+    "task": {
+      "download_dir": null,
+      "git_commit_id": null,
+      "git_url": null,
+      "name": null,
+      "overwrite": false,
+      "path": "/workspace/harbor/runs/1787799577-cr-ad34ae91-2532-4575-acff-8f28d-c42117a3-t3-1",
+      "ref": null,
+      "source": null
+    },
+    "timeout_multiplier": 6.0,
+    "trial_name": "1787799577-cr-ad34ae91-2532-4575__xBpGBb3",
+    "trials_dir": "/workspace/harbor/runs/1787799577-cr-ad34ae91-2532-4575-acff-8f28d-c42117a3-t3-1/jobs/agent__codex__r1-online-gpt-5.4",
+    "verifier": {
+      "disable": false,
+      "env": {},
+      "max_timeout_sec": null,
+      "override_timeout_sec": null
+    },
+    "verifier_timeout_multiplier": null
+  },
+  "environment_setup": {
+    "finished_at": "2026-08-27T03:03:41.370246Z",
+    "started_at": "2026-08-27T03:03:35.839772Z"
+  },
+  "exception_info": null,
+  "finished_at": "2026-08-27T03:14:36.873821Z",
+  "id": "f60ae0fd-5e8a-4938-98c9-b15a3c24244f",
+  "source": null,
+  "started_at": "2026-08-27T03:03:35.781928Z",
+  "step_results": null,
+  "task_checksum": "9bb24dc9ce7fc9fa41696daa2d8f7380c8582087b7aca6bdc0eee367a2780cc3",
+  "task_id": {
+    "path": "/workspace/harbor/runs/1787799577-cr-ad34ae91-2532-4575-acff-8f28d-c42117a3-t3-1"
+  },
+  "task_name": "security/bitemporal-zero-trust-authorization-recovery",
+  "trial_name": "1787799577-cr-ad34ae91-2532-4575__xBpGBb3",
+  "trial_uri": "file:///workspace/harbor/runs/1787799577-cr-ad34ae91-2532-4575-acff-8f28d-c42117a3-t3-1/jobs/agent__codex__r1-online-gpt-5.4/1787799577-cr-ad34ae91-2532-4575__xBpGBb3",
+  "verifier": {
+    "finished_at": "2026-08-27T03:14:26.029527Z",
+    "started_at": "2026-08-27T03:14:07.320449Z"
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 1.0
+    }
+  }
+}
