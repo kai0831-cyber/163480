@@ -439,6 +439,31 @@ def resource_lineage_case():
     return case
 
 
+def case_multiaction_only():
+    case = direct_case()
+    row = policy("multi-only", "ALLOW", "PRINCIPAL", "user", "root")
+    row["actions"] = ["read", "deploy"]
+    case["policy_events"] = [row]
+    case["requests"] = [
+        {**access_request("multi-deploy", "root", None), "action": "deploy"},
+        {**access_request("multi-delete", "root", None), "action": "delete"},
+    ]
+    return case
+
+
+def case_eligible_self_approval():
+    case = base_case()
+    case["resources"] = [case["resources"][0]]
+    case["policy_events"] = [policy("self-role", "ALLOW", "ROLE", "operator", "root")]
+    case["membership_events"] = [membership("user-approver", "PRINCIPAL", "user", "approvers")]
+    case["session_events"] = [
+        session_request("self-request", "self-session", "user", "operator"),
+        session_approve("self-approval", "self-session", "user", "2026-08-25T09:45:00Z"),
+    ]
+    case["requests"] = [access_request("self-approval-request", "root", "self-session")]
+    return case
+
+
 def case_revoked_incompatible_sod():
     case = case_active_sod()
     case["session_events"].append({
@@ -666,12 +691,16 @@ def main():
         ("resource-lineage-consistency", resource_lineage_case()),
         ("revoked-incompatible-sod", case_revoked_incompatible_sod()),
         ("approval-membership-boundaries", case_approval_membership_boundaries()),
+        ("multi-action-only", case_multiaction_only()),
+        ("eligible-self-approval", case_eligible_self_approval()),
     ]
     for name, payload in cases:
         assert_valid(name, payload)
     assert_valid("session-state-timeline", session_timeline_case())
     assert_valid("revoked-incompatible-sod-permutation", permuted(case_revoked_incompatible_sod(), 901))
     assert_valid("approval-membership-boundaries-permutation", permuted(case_approval_membership_boundaries(), 902))
+    assert_valid("multi-action-only-permutation", permuted(case_multiaction_only(), 903))
+    assert_valid("eligible-self-approval-permutation", permuted(case_eligible_self_approval(), 904))
     assert_valid("snapshot-replay-permutation", permuted(snapshot_replay_case(), 811))
     assert_valid("snapshot-replay-duplicates", duplicate_generated_rows(snapshot_replay_case()))
     assert_valid("resource-lineage-permutation", permuted(resource_lineage_case(), 812))
